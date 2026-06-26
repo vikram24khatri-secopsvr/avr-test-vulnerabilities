@@ -28,7 +28,7 @@ app.get('/user-profile', (req, res) => {
     });
 });
 
-// ALERT 2: Reflected Cross-Site Scripting / XSS (CWE-79)
+// ALERT 2: Vik K Reflected Cross-Site Scripting / XSS (CWE-79)
 // CodeQL Flag: "Reflected cross-site scripting"
 app.get('/search', (req, res) => {
     const searchTerm = req.query.q;
