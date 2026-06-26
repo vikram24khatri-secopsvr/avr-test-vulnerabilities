@@ -1,60 +1,61 @@
-
-const express = require('express');
-const mysql = require('mysql2');
 const fs = require('fs');
-const path = require('path');
+const http = require('http');
+const express = require('express');
 const app = express();
 
-// Mock database connection configuration
-const connection = mysql.createConnection({
-host: 'localhost',
-user: 'root',
-database: 'test'
-});
+app.use(express.json());
 
-// ALERT 1: SQL Injection (CWE-89)
-// CodeQL Flag: "Database query built from user-controlled input"
-app.get('/user-profile', (req, res) => {
-const userId = req.query.id;
-
-// VULNERABILITY: Directly concatenating untrusted user input into a SQL query
-const sqlQuery = "SELECT * FROM users WHERE id = '" + userId + "'";
-
-connection.query(sqlQuery, (err, results) => {
-if (err) throw err;
-res.json(results);
-});
-});
-
-// ALERT 2: Vik K Reflected Cross-Site Scripting / XSS (CWE-79)
-// CodeQL Flag: "Reflected cross-site scripting"
-app.get('/search', (req, res) => {
-const searchTerm = req.query.q;
-
-// VULNERABILITY: Sending unescaped, raw user input directly back inside HTML response
-res.send(`<h1>Search Results for: ${searchTerm}</h1>`);
-});
-
-// ALERT 3: Path Traversal (CWE-22)
-// CodeQL Flag: "Arbitrary file write during archive extraction" or "Path traversal"
-app.get('/view-file', (req, res) => {
-const filename = req.query.file;
-
-// VULNERABILITY: Constructing a file path using user input without sanitizing '../' sequences
-const securePath = path.join(__dirname, 'public', filename);
-
-fs.readFile(securePath, 'utf8', (err, data) => {
-if (err) {
-return res.status(404).send('File not found');
+function renderProfile(req, res) {
+  const name = req.query.name || 'guest';
+  res.send('<h1>Welcome ' + name + '</h1>');
 }
-res.send(data);
-});
-});
 
-// ALERT 4: Hardcoded Credentials / Cryptographic Secrets (CWE-798)
-// CodeQL/Secret Scanning Flag: "Hardcoded credential"
-const AWS_SECRET_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE/fakeSecretKeyDoNotUseInProd";
+function openRedirect(req, res) {
+  const target = req.query.next;
+  res.redirect(target);
+}
 
-app.listen(3000, () => {
-console.log('Vulnerable test server running on port 3000');
-})
+function unsafeEval(req, res) {
+  const expression = req.body.expression;
+  const result = eval(expression);
+  res.json({ result });
+}
+
+function commandInjection(req, res) {
+  const host = req.query.host;
+  require('child_process').exec('ping -c 1 ' + host, (err, stdout) => {
+    res.send(stdout || String(err));
+  });
+}
+
+function pathTraversal(req, res) {
+  const file = req.query.file;
+  const content = fs.readFileSync('/var/data/' + file, 'utf8');
+  res.send(content);
+}
+
+function ssrf(req, res) {
+  const url = req.query.url;
+  http.get(url, (r) => {
+    let data = '';
+    r.on('data', chunk => data += chunk);
+    r.on('end', () => res.send(data));
+  });
+}
+
+const users = { admin: { password: 'SuperSecret123!' } };
+
+function insecureRandomToken(req, res) {
+  const token = Math.random().toString(36).slice(2);
+  res.json({ token });
+}
+
+app.get('/profile', renderProfile);
+app.get('/redirect', openRedirect);
+app.post('/eval', unsafeEval);
+app.get('/ping', commandInjection);
+app.get('/file', pathTraversal);
+app.get('/fetch', ssrf);
+app.get('/token', insecureRandomToken);
+
+app.listen(3000);
